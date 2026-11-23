@@ -1321,11 +1321,9 @@ function buildAdditionalModelRequestFields(
 	model: Model<"bedrock-converse-stream">,
 	options: BedrockOptions,
 ): Record<string, any> | undefined {
-	if (!options.reasoning || !model.reasoning) {
-		return undefined;
-	}
+	if (!model.reasoning) return undefined;
 
-	if (isAnthropicClaudeModel(model)) {
+	if (options.reasoning && isAnthropicClaudeModel(model)) {
 		// GovCloud Bedrock currently rejects the Claude thinking.display field.
 		// Omit it there until the GovCloud Converse schema catches up.
 		const isGovCloud = isGovCloudBedrockTarget(model, options);
@@ -1375,6 +1373,14 @@ function buildAdditionalModelRequestFields(
 	}
 
 	const candidates = getModelMatchCandidates(model.id, model.name);
+
+	if (candidates.some((s) => /\bkimi-k3[.-]1\b/.test(s))) {
+		// Kimi defaults to max, so off needs an explicit none.
+		const level = options.reasoning === "minimal" ? "low" : (options.reasoning ?? "off");
+		return { reasoning_effort: model.thinkingLevelMap?.[level] ?? (level === "off" ? "none" : level) };
+	}
+
+	if (!options.reasoning) return undefined;
 
 	if (candidates.some((s) => s.includes("gpt-oss"))) {
 		return { reasoning_effort: OPENAI_GPT_OSS_EFFORT[options.reasoning] };

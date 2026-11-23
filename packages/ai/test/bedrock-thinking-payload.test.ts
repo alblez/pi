@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type BedrockOptions, stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
 import { getModel, normalizeContext } from "../src/compat.ts";
+import { clampThinkingLevel, getSupportedThinkingLevels } from "../src/models.ts";
 import type { Context, Model } from "../src/types.ts";
 import { hasBedrockCredentials } from "./bedrock-utils.ts";
 
@@ -45,8 +46,8 @@ async function capturePayload(
 ): Promise<BedrockThinkingPayload> {
 	let capturedPayload: BedrockThinkingPayload | undefined;
 	const s = streamBedrock(model, normalizeContext(makeContext()), {
+		reasoning: "high",
 		...options,
-		reasoning: options?.reasoning ?? "high",
 		onPayload: (payload) => {
 			capturedPayload = payload as BedrockThinkingPayload;
 			throw new PayloadCaptured();
@@ -258,6 +259,33 @@ describe("Bedrock OpenAI reasoning payload", () => {
 		expect(captured?.additionalModelRequestFields).toBeUndefined();
 	});
 });
+
+// Regression for #12462: both profiles must expose and send the Bedrock Kimi K3.1 efforts.
+describe.each(["global.moonshotai.kimi-k3.1", "us.moonshotai.kimi-k3.1"] as const)(
+	"Bedrock Kimi K3.1 thinking (%s)",
+	(id) => {
+		it("offers off through max without minimal", () => {
+			const model = getModel("amazon-bedrock", id);
+
+			expect(getSupportedThinkingLevels(model)).toEqual(["off", "low", "medium", "high", "xhigh", "max"]);
+			expect(clampThinkingLevel(model, "max")).toBe("max");
+		});
+
+		it.each([
+			[undefined, "none"],
+			["minimal", "low"],
+			["low", "low"],
+			["medium", "medium"],
+			["high", "high"],
+			["xhigh", "xhigh"],
+			["max", "max"],
+		] as const)("sends reasoning=%s as reasoning_effort=%s", async (reasoning, effort) => {
+			const payload = await capturePayload(getModel("amazon-bedrock", id), { reasoning });
+
+			expect(payload.additionalModelRequestFields).toEqual({ reasoning_effort: effort });
+		});
+	},
+);
 
 describe.skipIf(!hasBedrockCredentials())("Bedrock Claude max tokens E2E", () => {
 	it(

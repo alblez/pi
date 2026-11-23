@@ -1,4 +1,4 @@
-import { defineProvider, modelsDevModels, withInputLimits } from "../define.ts";
+import { defineProvider, mergeThinking, modelsDevModels, withInputLimits } from "../define.ts";
 
 // Opus 5 is only callable through cross-region inference profiles.
 const INFERENCE_PROFILE_ONLY_MODEL_IDS = new Set(["anthropic.claude-opus-5"]);
@@ -28,5 +28,11 @@ export default defineProvider({
 				...(source.structuredOutput ? { compat: { supportsStrictMode: true } } : {}),
 			}),
 		}),
-	finalize: (model) => withInputLimits(model, { images: { maxPerMessage: 20 } }),
+	finalize: (model) => {
+		withInputLimits(model, { images: { maxPerMessage: 20 } });
+		if (model.id.endsWith(".moonshotai.kimi-k3.1")) {
+			// Bedrock Kimi K3.1 accepts none through max, but not minimal.
+			mergeThinking(model, { off: "none", minimal: null, xhigh: "xhigh", max: "max" });
+		}
+	},
 });
